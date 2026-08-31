@@ -87,7 +87,7 @@ function defaultMember(overrides: Partial<MemberForm> = {}): MemberForm {
     spouseRelief: false,
     familyTopupEligible: false,
     currentSrsBalance: 0,
-    expectedSrsReturn: 0.02,
+    expectedSrsReturn: 0.07,
     expectedEquityReturn: 0.07,
     plannedRetirementAge: 63,
     retirementEarnedIncome: 0,
