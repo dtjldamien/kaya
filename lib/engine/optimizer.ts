@@ -10,14 +10,17 @@
  *    family caps and the $80k relief cap.
  *  - SRS saves tax at the marginal rate now but withdrawals are taxed later
  *    (50% taxable over the 10-year window, or 100% + 5% penalty if early).
- *    Recommended amount = argmax over contributions of
- *    [lifetime savings − attributable withdrawal tax], where the withdrawal
- *    tax attributable to new contributions excludes the tax on the existing
- *    balance (a sunk cost).
+ *    Recommended amount = argmax over contributions of the SRS-vs-cash
+ *    advantage at the retirement date: the growth handicap versus investing
+ *    the same dollars in cash equities, plus the savings stream compounded
+ *    at the equity rate, minus the withdrawal tax attributable to new
+ *    contributions (the tax on the existing balance is a sunk cost).
  *
  * Verdict thresholds (CFP rule of thumb): below a 7% marginal bracket the
  * immediate saving is thin against the liquidity lock-in (5% early-withdrawal
- * penalty); at 0% there is no benefit at all.
+ * penalty); at 0% there is no benefit at all. Above 7% the verdict follows
+ * the growth-aware advantage: a growth handicap that loses to cash investing
+ * means no recommendation and a "not worth it" verdict.
  */
 import type { SrsYearRules, TaxYearRules } from "./config.ts";
 import { roundCents } from "./money.ts";
@@ -36,6 +39,7 @@ import {
   type SrsAtRetirementScenario,
   type SrsEarlyWithdrawalScenario,
 } from "./srs/scenarios.ts";
+import { srsVsCash, type SrsVsCashComparison } from "./srs/compare.ts";
 
 /* ------------------------------ Inputs ------------------------------ */
 
@@ -57,6 +61,9 @@ export type OptimizerMemberInput = {
   currentSrsBalance?: number;
   /** Expected annual return on SRS funds (0.03 = 3%). */
   expectedSrsReturn?: number;
+  /** Expected annual return on cash investments, for the SRS-vs-cash
+   *  comparison (0.07 = 7%). Absent = comparison not computed. */
+  expectedEquityReturn?: number;
   /** Defaults to the statutory retirement age. */
   plannedRetirementAge?: number;
   /** Earned income per year during the drawdown window (part-time work);
@@ -103,8 +110,12 @@ export type MemberSrsReport = {
   lifetimeSavings: number;
   atRetirement: SrsAtRetirementScenario;
   early: SrsEarlyWithdrawalScenario;
-  /** lifetimeSavings − at-retirement withdrawal tax. */
+  /** Savings (compounded at the equity rate when supplied, else nominal)
+   *  − at-retirement withdrawal tax. */
   netLifetimeBenefit: number;
+  /** SRS vs investing the same dollars with cash (null unless
+   *  expectedEquityReturn was supplied). */
+  vsCash: SrsVsCashComparison | null;
 };
 
 export type MemberPlan = {
@@ -120,7 +131,10 @@ export type MemberPlan = {
   proposed: { topUpSelf: number; topUpFamily: number; srsAnnual: number };
   /** This-YA savings split by lever. */
   savings: { topUp: number; srs: number; total: number };
-  srs: MemberSrsReport | null;
+  /** SRS analysis at the proposed amount — or, when none is proposed, at
+   *  the recommendation (else the cap) as a what-if, so the cost/benefit is
+   *  visible even when the recommendation is zero. */
+  srs: MemberSrsReport;
   verdict: "yes" | "no" | "conditional";
   reasons: string[];
 };
@@ -212,10 +226,10 @@ function recommendTopUps(ctx: MemberContext): { self: number; family: number } {
 }
 
 /**
- * SRS recommendation: grid-search the contribution maximizing
- * [lifetime savings − attributable withdrawal tax]. The objective is concave
- * (savings step down at bracket floors, withdrawal tax steps up), so the
- * $100 grid lands within a step of the exact kink.
+ * SRS recommendation: grid-search the contribution maximizing the
+ * SRS-vs-cash advantage. The objective is concave (savings step down at
+ * bracket floors, withdrawal tax steps up), so the $100 grid lands within
+ * a step of the exact kink.
  */
 function recommendSrs(
   ctx: MemberContext,
@@ -227,9 +241,14 @@ function recommendSrs(
   if (cap <= 0 || room <= 0 || rateAt(chargeable, ctx.rules.brackets) === 0) return 0;
 
   const years = Math.max(0, withdrawalAge(ctx) - ctx.input.age);
-  const yearsContributing = Math.max(1, years);
   const r = ctx.input.expectedSrsReturn ?? 0;
   const currentBalance = ctx.input.currentSrsBalance ?? 0;
+  // Score = the SRS-vs-cash advantage at retirement (see srs/compare.ts):
+  // the contribution stream's growth handicap versus cash equities, plus the
+  // savings stream compounded at the equity rate, minus the withdrawal tax.
+  // Falls back to the SRS rate (no handicap) when no equity rate is given,
+  // and to nominal savings when both are 0.
+  const equityReturn = ctx.input.expectedEquityReturn ?? r;
 
   const savings = (c: number) =>
     roundCents(
@@ -256,22 +275,29 @@ function recommendSrs(
   // to new contributions.
   const sunkTax = withdrawalTax(0);
 
+  const futureValue = (contribution: number, rate: number) =>
+    projectSrsBalance({
+      currentBalance: 0,
+      annualContribution: contribution,
+      years,
+      annualReturn: rate,
+    });
+  const score = (c: number) =>
+    futureValue(c, r) -
+    futureValue(c, equityReturn) +
+    futureValue(savings(c), equityReturn) -
+    (withdrawalTax(c) - sunkTax);
+
   let best = 0;
   let bestScore = 0;
   for (let c = SRS_GRID_STEP; c <= cap; c += SRS_GRID_STEP) {
-    const score =
-      yearsContributing * savings(c) - (withdrawalTax(c) - sunkTax);
-    if (score > bestScore + 1e-9) {
-      bestScore = score;
+    if (score(c) > bestScore + 1e-9) {
+      bestScore = score(c);
       best = c;
     }
   }
   // The cap itself is a candidate when it isn't a grid multiple.
-  if (cap % SRS_GRID_STEP !== 0) {
-    const score =
-      yearsContributing * savings(cap) - (withdrawalTax(cap) - sunkTax);
-    if (score > bestScore + 1e-9) best = cap;
-  }
+  if (cap % SRS_GRID_STEP !== 0 && score(cap) > bestScore + 1e-9) best = cap;
   return best;
 }
 
@@ -303,8 +329,7 @@ function buildSrsReport(
   ctx: MemberContext,
   srsAnnual: number,
   savingsThisYear: number,
-): MemberSrsReport | null {
-  if (srsAnnual <= 0) return null;
+): MemberSrsReport {
   const years = Math.max(0, withdrawalAge(ctx) - ctx.input.age);
   const yearsContributing = Math.max(1, years);
   const projectedBalance = projectSrsBalance({
@@ -340,6 +365,33 @@ function buildSrsReport(
     age: earlyAge,
   });
   const lifetimeSavings = roundCents(savingsThisYear * yearsContributing);
+  // SRS-vs-cash: the withdrawal tax attributable to the new contributions
+  // excludes the tax on the existing balance (sunk, like in recommendSrs).
+  let vsCash: SrsVsCashComparison | null = null;
+  if (ctx.input.expectedEquityReturn != null) {
+    const sunkTax = atRetirementScenario({
+      projectedBalance: projectSrsBalance({
+        currentBalance: ctx.input.currentSrsBalance ?? 0,
+        annualContribution: 0,
+        years,
+        annualReturn: ctx.input.expectedSrsReturn ?? 0,
+      }),
+      srsRules: ctx.srsRules,
+      brackets: ctx.rules.brackets,
+      currentAge: ctx.input.age,
+      plannedRetirementAge: ctx.input.plannedRetirementAge,
+      currentYear: ctx.currentYear,
+      otherAnnualIncome: retirementNetIncome(ctx),
+    }).totalTax;
+    vsCash = srsVsCash({
+      annualContribution: srsAnnual,
+      years,
+      srsReturn: ctx.input.expectedSrsReturn ?? 0,
+      equityReturn: ctx.input.expectedEquityReturn,
+      annualSavings: savingsThisYear,
+      withdrawalTax: atRetirement.totalTax - sunkTax,
+    });
+  }
   return {
     annualContribution: srsAnnual,
     yearsContributing,
@@ -351,15 +403,22 @@ function buildSrsReport(
     lifetimeSavings,
     atRetirement,
     early,
-    netLifetimeBenefit: roundCents(lifetimeSavings - atRetirement.totalTax),
+    // With an equity rate supplied, the savings are priced at retirement
+    // (saved + reinvestment growth); otherwise nominal. Either way the
+    // withdrawal tax on the whole balance comes off.
+    netLifetimeBenefit: roundCents(
+      (vsCash?.savingsAtRetirement ?? lifetimeSavings) - atRetirement.totalTax,
+    ),
+    vsCash,
   };
 }
 
 function verdictFor(
   ctx: MemberContext,
   marginalRate: number,
-  srs: MemberSrsReport | null,
+  srs: MemberSrsReport,
   recommendedSrs: number,
+  proposedSrs: number,
 ): { verdict: MemberPlan["verdict"]; reasons: string[] } {
   const reasons: string[] = [];
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -377,34 +436,59 @@ function verdictFor(
     `Every relief dollar saves ${pct(marginalRate)} now (your marginal bracket).`,
   );
 
-  if (srs) {
-    reasons.push(
-      `At-retirement drawdown: ${pct(srs.atRetirement.effectiveRate)} effective tax on withdrawals ` +
-        `($${Math.round(srs.atRetirement.totalTax).toLocaleString("en-SG")} over the 10-year window).`,
-    );
-    reasons.push(
-      `Early withdrawal at ${srs.early.age} would cost ${pct(srs.early.effectiveRate)} of the balance ` +
-        `(5% penalty + full taxation). Only commit money you can lock in until ${srs.withdrawalAge}.`,
-    );
-  } else if (recommendedSrs > 0) {
+  reasons.push(
+    `At-retirement drawdown: ${pct(srs.atRetirement.effectiveRate)} effective tax on withdrawals ` +
+      `($${Math.round(srs.atRetirement.totalTax).toLocaleString("en-SG")} over the 10-year window).`,
+  );
+  reasons.push(
+    `Early withdrawal at ${srs.early.age} would cost ${pct(srs.early.effectiveRate)} of the balance ` +
+      `(5% penalty + full taxation). Only commit money you can lock in until ${srs.withdrawalAge}.`,
+  );
+  if (proposedSrs === 0 && recommendedSrs > 0) {
     reasons.push(
       `No SRS contribution proposed, but $${recommendedSrs.toLocaleString("en-SG")}/yr is recommended at your bracket.`,
     );
   }
 
-  if (marginalRate >= 0.07 && (srs == null || srs.netLifetimeBenefit > 0)) {
-    if (srs) {
-      reasons.unshift(
-        `Net lifetime benefit $${Math.round(srs.netLifetimeBenefit).toLocaleString("en-SG")}: ` +
-          `save ${pct(srs.effectiveReturnPct)} per contributed dollar now, pay ~${pct(srs.atRetirement.effectiveRate)} later.`,
-      );
-    }
-    return { verdict: srs ? "yes" : "conditional", reasons };
+  // The win measure: growth-aware SRS-vs-cash advantage when an equity rate
+  // was supplied, else the nominal lifetime benefit.
+  const advantage = srs.vsCash?.advantage ?? srs.netLifetimeBenefit;
+
+  // Nothing proposed and nothing recommended: SRS has no edge under these
+  // assumptions (thin bracket, or the growth handicap loses to cash).
+  if (proposedSrs === 0 && recommendedSrs === 0) {
+    reasons.push(
+      marginalRate >= 0.07
+        ? "No SRS contribution recommended: at these growth rates the lock-in loses to investing the same dollars with cash."
+        : "Below the 7% bracket the immediate saving is thin against the liquidity lock-in; " +
+          "CPF cash top-ups (never taxed again) are the better first dollar.",
+    );
+    return { verdict: "no", reasons };
   }
-  reasons.push(
-    "Below the 7% bracket the immediate saving is thin against the liquidity lock-in; " +
-      "CPF cash top-ups (never taxed again) are the better first dollar.",
-  );
+
+  if (marginalRate >= 0.07 && advantage > 0) {
+    reasons.unshift(
+      srs.vsCash
+        ? `SRS beats cash investing by $${Math.round(srs.vsCash.advantage).toLocaleString("en-SG")} at retirement: ` +
+          `save ${pct(srs.effectiveReturnPct)} per contributed dollar now, pay ~${pct(srs.atRetirement.effectiveRate)} later.`
+        : `Net lifetime benefit $${Math.round(srs.netLifetimeBenefit).toLocaleString("en-SG")}: ` +
+          `save ${pct(srs.effectiveReturnPct)} per contributed dollar now, pay ~${pct(srs.atRetirement.effectiveRate)} later.`,
+    );
+    return { verdict: proposedSrs > 0 ? "yes" : "conditional", reasons };
+  }
+
+  // A contribution with no edge: low bracket or a losing handicap.
+  if (marginalRate >= 0.07) {
+    reasons.push(
+      `This contribution loses to cash investing by $${Math.round(-advantage).toLocaleString("en-SG")} at retirement; ` +
+        `the recommendation is $${recommendedSrs.toLocaleString("en-SG")}/yr.`,
+    );
+  } else {
+    reasons.push(
+      "Below the 7% bracket the immediate saving is thin against the liquidity lock-in; " +
+        "CPF cash top-ups (never taxed again) are the better first dollar.",
+    );
+  }
   return { verdict: "conditional", reasons };
 }
 
@@ -501,6 +585,23 @@ export function optimizeHouseholdContributions(
   );
   const final = householdTax(proposed);
 
+  // SRS analysis amount per member: the proposal, else the recommendation,
+  // else the cap — so a zero recommendation still shows what contributing
+  // would cost. One extra tax pass only when a display amount differs.
+  const displaySrs = ctxs.map((ctx, i) =>
+    proposed[i]!.srsAnnual > 0
+      ? proposed[i]!.srsAnnual
+      : recommended[i]!.srsAnnual > 0
+        ? recommended[i]!.srsAnnual
+        : srsCap(ctx),
+  );
+  const display =
+    displaySrs.some((d, i) => d !== proposed[i]!.srsAnnual)
+      ? householdTax(
+          proposed.map((p, i) => ({ ...p, srsAnnual: displaySrs[i]! })),
+        )
+      : final;
+
   const plans = ctxs.map((ctx, i): MemberPlan => {
     const base = baseline.results[i]!;
     const withTopUps = topUpOnly.results[i]!;
@@ -508,12 +609,18 @@ export function optimizeHouseholdContributions(
     const marginalRate = rateAt(base.chargeableIncome, rules.brackets);
     const topUpSavings = roundCents(base.taxPayable - withTopUps.taxPayable);
     const srsSavings = roundCents(withTopUps.taxPayable - optimized.taxPayable);
-    const srs = buildSrsReport(ctx, proposed[i]!.srsAnnual, srsSavings);
+    const displayAmount = displaySrs[i]!;
+    const displaySavings =
+      displayAmount === proposed[i]!.srsAnnual
+        ? srsSavings
+        : roundCents(withTopUps.taxPayable - display.results[i]!.taxPayable);
+    const srs = buildSrsReport(ctx, displayAmount, displaySavings);
     const { verdict, reasons } = verdictFor(
       ctx,
       marginalRate,
       srs,
       recommended[i]!.srsAnnual,
+      proposed[i]!.srsAnnual,
     );
     return {
       name: ctx.name,

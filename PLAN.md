@@ -32,7 +32,7 @@ lib/
     tax/          # brackets, relief library, per-member + household compute,
                   # shared-relief water-filling optimizer
     srs/          # drawdown.ts (10-yr water-fill) + scenarios.ts (projection,
-                  # at-retirement vs early-withdrawal)
+                  # at-retirement vs early-withdrawal) + compare.ts (SRS vs cash)
     optimizer.ts  # the product: household recommendations + CFP report
 ```
 
@@ -40,13 +40,18 @@ lib/
 
 - **Top-ups**: never taxed again → recommend up to caps, bounded by taxable
   dollars above the 0% bracket and $80k relief-cap room.
-- **SRS**: recommend argmax over contributions of
-  `yearsContributing × savingsThisYear(c) − (withdrawalTax(c) − withdrawalTax(0))`;
+- **SRS**: recommend argmax over contributions of the SRS-vs-cash advantage
+  at retirement:
+  `fv(c, srsReturn) − fv(c, equityReturn) + fv(savings(c), equityReturn) − (withdrawalTax(c) − withdrawalTax(0))`;
   objective is concave → $100 grid lands on the optimal kink. Existing
-  balance's withdrawal tax is sunk and excluded.
-- **Verdict**: marginal bracket ≥ 7% and positive net lifetime benefit →
-  "Worth it"; below 7% → "Conditional" (lock-in vs thin saving); 0% → "Not
-  worth it".
+  balance's withdrawal tax is sunk and excluded. With no equity rate
+  supplied the savings fall back to nominal (0% reinvestment).
+- **Verdict**: marginal bracket ≥ 7% and positive growth-aware advantage →
+  "Worth it"; a growth handicap that loses to cash or a 0% bracket → "Not
+  worth it"; otherwise "Conditional".
+- **SRS report**: always rendered — with no proposal it is priced at the
+  recommendation (else the cap) as a what-if, so a losing case shows its
+  loss instead of hiding.
 
 ## Known simplifications
 

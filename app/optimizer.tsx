@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,8 @@ export type MemberForm = {
   familyTopupEligible: boolean;
   currentSrsBalance: number;
   expectedSrsReturn: number;
+  /** Growth rate of the cash-investing alternative (SRS-vs-cash comparison). */
+  expectedEquityReturn: number;
   plannedRetirementAge: number;
   /** Part-time work in retirement; attracts earned income relief ($8k at 60+). */
   retirementEarnedIncome: number;
@@ -85,6 +88,7 @@ function defaultMember(overrides: Partial<MemberForm> = {}): MemberForm {
     familyTopupEligible: false,
     currentSrsBalance: 0,
     expectedSrsReturn: 0.02,
+    expectedEquityReturn: 0.07,
     plannedRetirementAge: 63,
     retirementEarnedIncome: 0,
     retirementOtherIncome: 0,
@@ -167,6 +171,7 @@ function toMemberInput(
     claims,
     currentSrsBalance: f.currentSrsBalance,
     expectedSrsReturn: f.expectedSrsReturn,
+    expectedEquityReturn: f.expectedEquityReturn,
     plannedRetirementAge: f.plannedRetirementAge,
     retirementEarnedIncome: f.retirementEarnedIncome || undefined,
     retirementOtherIncome: f.retirementOtherIncome || undefined,
@@ -270,11 +275,37 @@ function Check({
   );
 }
 
-const RETURN_PRESETS = [
-  { value: "0.0005", label: "Idle cash (0.05%)" },
-  { value: "0.02", label: "T-bills / bonds (2%)" },
-  { value: "0.07", label: "Equity / robo (7%)" },
-];
+/** Percent-rate slider (0–12%, quarter-point steps) as a grid-aligned field. */
+export function Rate({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  /** Fraction (0.07 = 7%). */
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <span className="text-xs font-semibold tabular-nums">{formatPct(value)}</span>
+      </div>
+      <div className="flex h-9 items-center">
+        <Slider
+          min={0}
+          max={0.12}
+          step={0.0025}
+          value={[value]}
+          onValueChange={(v) =>
+            onChange(Number((Array.isArray(v) ? v[0]! : v).toFixed(4)))
+          }
+        />
+      </div>
+    </div>
+  );
+}
 
 function MemberFormCard({
   title,
@@ -375,14 +406,11 @@ function MemberFormCard({
           </h4>
           <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
             <Num label="Current SRS balance" value={form.currentSrsBalance} onChange={(currentSrsBalance) => set({ currentSrsBalance })} />
-            <Pick
-              label="SRS investment strategy"
-              value={String(form.expectedSrsReturn)}
-              options={RETURN_PRESETS}
-              onChange={(v) => set({ expectedSrsReturn: Number(v) })}
-            />
             <Num label="Planned retirement age" value={form.plannedRetirementAge} onChange={(plannedRetirementAge) => set({ plannedRetirementAge })} />
-            <Num label="Earned income in retirement (p.a.)" value={form.retirementEarnedIncome} onChange={(retirementEarnedIncome) => set({ retirementEarnedIncome })} />
+            {/* Retirement-income scenario fields share their own row. */}
+            <div className="sm:col-start-1">
+              <Num label="Earned income in retirement (p.a.)" value={form.retirementEarnedIncome} onChange={(retirementEarnedIncome) => set({ retirementEarnedIncome })} />
+            </div>
             <Num label="Rental/other income in retirement (p.a.)" value={form.retirementOtherIncome} onChange={(retirementOtherIncome) => set({ retirementOtherIncome })} />
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Early withdrawal age (blank = now)</Label>

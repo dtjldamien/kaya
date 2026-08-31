@@ -2,9 +2,11 @@
 
 /**
  * Per-member CFP cost-benefit report: relief breakdown, immediate tax alpha,
- * the at-retirement 10-year drawdown, the early-withdrawal scenario, and the
- * net lifetime verdict. Proposed amounts default to the optimizer's
- * recommendation and can be overridden to what-if.
+ * the at-retirement 10-year drawdown, the early-withdrawal scenario, the
+ * SRS-vs-cash comparison, and the net lifetime verdict. Proposed amounts
+ * default to the optimizer's recommendation and can be overridden to
+ * what-if. With no SRS proposal the report still renders, priced at the
+ * recommendation (else the cap), so the cost of contributing stays visible.
  */
 import type { MemberPlan } from "@/lib/engine/optimizer.ts";
 import { formatDollarsWhole as fmt, formatPct } from "@/lib/format";
@@ -21,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { MemberForm } from "./optimizer";
+import { Rate, type MemberForm } from "./optimizer";
 
 const VERDICT_CLASS: Record<MemberPlan["verdict"], string> = {
   yes: "bg-green-600 text-white dark:bg-green-700",
@@ -194,10 +196,10 @@ export function MemberReport({
         <p className="text-xs text-muted-foreground">
           How the SRS amount is picked: each contributed dollar saves your marginal bracket
           now, but grows your SRS balance, and withdrawals are 50% taxable over the
-          10-year window after age {srs?.withdrawalAge ?? 63}. The recommendation is the
-          amount where the two rates cross, maximizing lifetime savings minus withdrawal
-          tax. Top-ups have no future tax, so they fill every taxable dollar up to the
-          $8k caps.
+          10-year window after age {srs.withdrawalAge}. The recommendation maximizes the
+          SRS advantage over investing the same dollars with cash: savings compounded at
+          the equity rate, minus the growth handicap and the withdrawal tax (section 4).
+          Top-ups have no future tax, so they fill every taxable dollar up to the $8k caps.
         </p>
 
         {/* 1. Immediate tax alpha */}
@@ -230,7 +232,7 @@ export function MemberReport({
           <p className="mt-2 text-sm">
             Saved <strong>{fmt(savings.total)}</strong> this year: {fmt(savings.topUp)} from
             CPF top-ups, {fmt(savings.srs)} from SRS
-            {srs && (
+            {plan.proposed.srsAnnual > 0 && (
               <>
                 {" "}
                 (<strong>{formatPct(srs.effectiveReturnPct)}</strong> immediate return on SRS
@@ -249,106 +251,232 @@ export function MemberReport({
           </details>
         </section>
 
-        {srs && (
-          <>
-            {/* 2. Retirement withdrawal */}
-            <section>
-              <h3 className="mb-2 text-sm font-semibold">
-                2 · At retirement ({srs.withdrawalAge}), the 10-year drawdown
-              </h3>
-              <p className="mb-2 text-sm text-muted-foreground">
-                Contributing {fmt(srs.annualContribution)}/yr for {srs.yearsContributing} years
-                (total {fmt(srs.totalContributions)}) grows to{" "}
-                <strong className="text-foreground">{fmt(srs.projectedBalance)}</strong> at
-                withdrawal age. Withdrawals are 50% taxable, spread to fill the lowest brackets
-                {(form.retirementEarnedIncome > 0 || form.retirementOtherIncome > 0) &&
-                  ", net of the earned income relief ($8,000 at 60+) on any part-time income"}
-                .
-              </p>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Year</TableHead>
-                    <TableHead className={cellR}>Withdrawal</TableHead>
-                    <TableHead className={cellR}>Taxable (50%)</TableHead>
-                    <TableHead className={cellR}>Tax</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {srs.atRetirement.schedule.years.map((y) => (
-                    <TableRow key={y.year}>
-                      <TableCell>{y.year}</TableCell>
-                      <TableCell className={cellR}>{fmt(y.withdrawal)}</TableCell>
-                      <TableCell className={cellR}>{fmt(y.taxableAmount)}</TableCell>
-                      <TableCell className={cellR}>{fmt(y.tax)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow>
-                    <TableCell>Total</TableCell>
-                    <TableCell className={cellR}>
-                      {fmt(srs.atRetirement.schedule.totalWithdrawn)}
-                    </TableCell>
-                    <TableCell className={cellR}></TableCell>
-                    <TableCell className={cellR}>{fmt(srs.atRetirement.totalTax)}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
-              <p className="mt-2 text-sm">
-                Effective tax on withdrawals:{" "}
-                <strong>{formatPct(srs.atRetirement.effectiveRate)}</strong>
-              </p>
-            </section>
+        {plan.proposed.srsAnnual === 0 && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            No SRS contribution proposed — sections 2–5 show what contributing{" "}
+            {fmt(srs.annualContribution)}/yr would do.
+          </p>
+        )}
 
-            {/* 3. Early withdrawal */}
-            <section>
-              <h3 className="mb-2 text-sm font-semibold">
-                3 · Early withdrawal (age {srs.early.age}), worst case
-              </h3>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>Balance withdrawn</TableCell>
-                    <TableCell className={cellR}>{fmt(srs.early.balance)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>5% penalty</TableCell>
-                    <TableCell className={cellR}>{fmt(srs.early.penalty)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Tax (100% taxable, stacked on income)</TableCell>
-                    <TableCell className={cellR}>{fmt(srs.early.tax)}</TableCell>
-                  </TableRow>
-                  <TableRow className="font-semibold">
-                    <TableCell>Total cost</TableCell>
-                    <TableCell className={cellR}>
-                      {fmt(srs.early.totalCost)} ({formatPct(srs.early.effectiveRate)})
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </section>
+        {/* 2. Retirement withdrawal */}
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">
+            2 · At retirement ({srs.withdrawalAge}), the 10-year drawdown
+          </h3>
+          <p className="mb-2 text-sm text-muted-foreground">
+            Contributing {fmt(srs.annualContribution)}/yr for {srs.yearsContributing} years
+            (total {fmt(srs.totalContributions)}) grows to{" "}
+            <strong className="text-foreground">{fmt(srs.projectedBalance)}</strong> at
+            withdrawal age. Withdrawals are 50% taxable, spread to fill the lowest brackets
+            {(form.retirementEarnedIncome > 0 || form.retirementOtherIncome > 0) &&
+              ", net of the earned income relief ($8,000 at 60+) on any part-time income"}
+            .
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Year</TableHead>
+                <TableHead className={cellR}>Withdrawal</TableHead>
+                <TableHead className={cellR}>Taxable (50%)</TableHead>
+                <TableHead className={cellR}>Tax</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {srs.atRetirement.schedule.years.map((y) => (
+                <TableRow key={y.year}>
+                  <TableCell>{y.year}</TableCell>
+                  <TableCell className={cellR}>{fmt(y.withdrawal)}</TableCell>
+                  <TableCell className={cellR}>{fmt(y.taxableAmount)}</TableCell>
+                  <TableCell className={cellR}>{fmt(y.tax)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell>Total</TableCell>
+                <TableCell className={cellR}>
+                  {fmt(srs.atRetirement.schedule.totalWithdrawn)}
+                </TableCell>
+                <TableCell className={cellR}></TableCell>
+                <TableCell className={cellR}>{fmt(srs.atRetirement.totalTax)}</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+          <p className="mt-2 text-sm">
+            Effective tax on withdrawals:{" "}
+            <strong>{formatPct(srs.atRetirement.effectiveRate)}</strong>
+          </p>
+        </section>
 
-            {/* 4. Verdict */}
-            <section>
-              <h3 className="mb-2 text-sm font-semibold">4 · Net lifetime benefit</h3>
-              <p className="text-sm">
+        {/* 3. Early withdrawal */}
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">
+            3 · Early withdrawal (age {srs.early.age}), worst case
+          </h3>
+          <Table>
+            <TableBody>
+              <TableRow>
+                <TableCell>Balance withdrawn</TableCell>
+                <TableCell className={cellR}>{fmt(srs.early.balance)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>5% penalty</TableCell>
+                <TableCell className={cellR}>{fmt(srs.early.penalty)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Tax (100% taxable, stacked on income)</TableCell>
+                <TableCell className={cellR}>{fmt(srs.early.tax)}</TableCell>
+              </TableRow>
+              <TableRow className="font-semibold">
+                <TableCell>Total cost</TableCell>
+                <TableCell className={cellR}>
+                  {fmt(srs.early.totalCost)} ({formatPct(srs.early.effectiveRate)})
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
+
+        {/* 4. SRS vs investing with cash */}
+        {srs.vsCash && (
+          <section>
+            <h3 className="mb-2 text-sm font-semibold">
+              4 · SRS vs investing with cash
+            </h3>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Same {fmt(srs.annualContribution)}/yr, two paths to age {srs.withdrawalAge}.
+              SRS grows with withdrawals taxed on the way out; cash grows with no relief
+              now and no tax on gains (Singapore has no capital gains tax). The annual tax
+              savings are reinvested at the equity rate.
+            </p>
+            <div className="mb-3 grid max-w-md grid-cols-2 gap-x-6">
+              <Rate
+                label="SRS growth rate"
+                value={form.expectedSrsReturn}
+                onChange={(expectedSrsReturn) => onPropose({ expectedSrsReturn })}
+              />
+              <Rate
+                label="Equity growth rate"
+                value={form.expectedEquityReturn}
+                onChange={(expectedEquityReturn) =>
+                  onPropose({ expectedEquityReturn })
+                }
+              />
+            </div>
+            <Table>
+              <TableBody>
+                <TableRow className="font-semibold">
+                  <TableCell>SRS path</TableCell>
+                  <TableCell className={cellR}>{fmt(srs.vsCash.srsTotal)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="pl-7 text-muted-foreground">
+                    Contributions grown at {formatPct(form.expectedSrsReturn)}
+                  </TableCell>
+                  <TableCell className={`${cellR} text-muted-foreground`}>
+                    {fmt(srs.vsCash.contributionsAtRetirement)}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="pl-7 text-muted-foreground">
+                    − Withdrawal tax on the new money
+                  </TableCell>
+                  <TableCell className={`${cellR} text-muted-foreground`}>
+                    −{fmt(srs.vsCash.withdrawalTax)}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="pl-7 text-muted-foreground">
+                    + Tax savings reinvested at {formatPct(form.expectedEquityReturn)}
+                  </TableCell>
+                  <TableCell className={`${cellR} text-muted-foreground`}>
+                    {fmt(srs.vsCash.savingsAtRetirement)}
+                  </TableCell>
+                </TableRow>
+                <TableRow className="font-semibold">
+                  <TableCell>
+                    Cash path (invested at {formatPct(form.expectedEquityReturn)})
+                  </TableCell>
+                  <TableCell className={cellR}>{fmt(srs.vsCash.cashTotal)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+            <p className="mt-2 text-sm">
+              {srs.vsCash.advantage >= 0 ? (
+                <>
+                  SRS wins by{" "}
+                  <strong className="text-green-600 dark:text-green-400">
+                    {fmt(srs.vsCash.advantage)}
+                  </strong>{" "}
+                  at retirement.
+                </>
+              ) : (
+                <>
+                  Cash investing wins by{" "}
+                  <strong className="text-red-600 dark:text-red-400">
+                    {fmt(-srs.vsCash.advantage)}
+                  </strong>{" "}
+                  at retirement — and stays liquid throughout.
+                </>
+              )}
+            </p>
+          </section>
+        )}
+
+        {/* 5. Verdict */}
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">5 · Net lifetime benefit</h3>
+          <p className="text-sm">
+            {srs.vsCash ? (
+              <>
+                Tax saved {fmt(srs.lifetimeSavings)} + reinvestment growth{" "}
+                {fmt(srs.vsCash.savingsAtRetirement - srs.lifetimeSavings)} (at{" "}
+                {formatPct(form.expectedEquityReturn)}) − retirement tax{" "}
+                {fmt(srs.atRetirement.totalTax)} ={" "}
+              </>
+            ) : (
+              <>
                 Lifetime savings {fmt(srs.lifetimeSavings)} (assuming constant income) −
                 retirement tax {fmt(srs.atRetirement.totalTax)} ={" "}
-                <strong
-                  className={
-                    srs.netLifetimeBenefit >= 0
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  }
-                >
-                  {fmt(srs.netLifetimeBenefit)}
-                </strong>
-              </p>
-            </section>
-          </>
-        )}
+              </>
+            )}
+            <strong
+              className={
+                srs.netLifetimeBenefit >= 0
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-red-600 dark:text-red-400"
+              }
+            >
+              {fmt(srs.netLifetimeBenefit)}
+            </strong>
+          </p>
+          {srs.vsCash && srs.vsCash.advantage !== srs.netLifetimeBenefit && (
+            <p className="mt-1 text-sm">
+              Against investing the same dollars with cash at{" "}
+              {formatPct(form.expectedEquityReturn)}:{" "}
+              {srs.vsCash.advantage >= 0 ? (
+                <>
+                  SRS wins by{" "}
+                  <strong className="text-green-600 dark:text-green-400">
+                    {fmt(srs.vsCash.advantage)}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  SRS loses by{" "}
+                  <strong className="text-red-600 dark:text-red-400">
+                    {fmt(-srs.vsCash.advantage)}
+                  </strong>
+                </>
+              )}{" "}
+              at age {srs.withdrawalAge}. The gap versus the tax arbitrage above is the
+              two paths&apos; growth difference
+              {form.currentSrsBalance > 0 &&
+                ", plus the sunk withdrawal tax on your existing balance"}
+              .
+            </p>
+          )}
+        </section>
 
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           {plan.reasons.map((r, i) => (

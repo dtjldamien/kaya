@@ -86,7 +86,10 @@ test("zero chargeable income: recommend nothing, verdict no", () => {
   assert.equal(r.self.marginalRate, 0);
   assert.deepEqual(r.self.recommended, { topUpSelf: 0, topUpFamily: 0, srsAnnual: 0 });
   assert.equal(r.self.verdict, "no");
-  assert.equal(r.self.srs, null);
+  // The report still renders — as a what-if at the $15,300 cap with zero
+  // savings — so the cost of contributing stays visible.
+  assert.equal(r.self.srs.annualContribution, 15_300);
+  assert.equal(r.self.srs.savingsThisYear, 0);
   assert.equal(r.combinedSavings, 0);
 });
 
@@ -216,6 +219,49 @@ test("retirement earned income gets the age-60+ earned income relief", () => {
   assert.ok(
     earned.self.srs!.atRetirement.totalTax < rental.self.srs!.atRetirement.totalTax,
   );
+});
+
+test("equal growth rates: full cap recommended, verdict yes", () => {
+  // 29-year-old at the 11.5% bracket, 7% inside and outside SRS: no growth
+  // handicap, so the net lifetime benefit (tax saved + reinvestment growth −
+  // withdrawal tax) equals the vs-cash advantage and is strongly positive.
+  const r = optimizeHouseholdContributions({
+    rules,
+    srsRules: srs,
+    currentYear: CURRENT_YEAR,
+    self: member({
+      age: 29,
+      earnedIncome: 137_000,
+      expectedSrsReturn: 0.07,
+      expectedEquityReturn: 0.07,
+    }),
+  });
+  const p = r.self;
+  assert.equal(p.recommended.srsAnnual, 15_300);
+  // savings 59,823 compounded to ~241k − ~62k withdrawal tax.
+  assert.ok(p.srs!.netLifetimeBenefit > 150_000);
+  assert.equal(p.srs!.netLifetimeBenefit, p.srs!.vsCash!.advantage);
+  assert.equal(p.verdict, "yes");
+});
+
+test("idle SRS vs equities: nothing recommended, verdict no", () => {
+  // SRS cash at 0.05% against 7% equities: the growth handicap kills the
+  // arbitrage, so the recommendation is 0 and the verdict is "no", not
+  // "conditional".
+  const r = optimizeHouseholdContributions({
+    rules,
+    srsRules: srs,
+    currentYear: CURRENT_YEAR,
+    self: member({
+      expectedSrsReturn: 0.0005,
+      expectedEquityReturn: 0.07,
+    }),
+  });
+  assert.equal(r.self.recommended.srsAnnual, 0);
+  // What-if at the cap: the advantage is negative, showing the loss.
+  assert.equal(r.self.srs.annualContribution, 15_300);
+  assert.ok(r.self.srs.vsCash!.advantage < 0);
+  assert.equal(r.self.verdict, "no");
 });
 
 test("existing balance's withdrawal tax is sunk — doesn't kill the recommendation", () => {

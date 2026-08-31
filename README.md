@@ -18,10 +18,17 @@ Per member (self + optional spouse), the app computes:
    effective tax rate on withdrawals.
 3. **Early withdrawal (worst case)**: 5% penalty on the full balance plus
    100% of it stacked on that year's chargeable income.
-4. **Net lifetime benefit & verdict**: lifetime savings (constant-income
-   assumption) minus withdrawal tax, with a Worth it / Conditional / Not
-   worth it verdict (below the 7% marginal bracket the lock-in is thin; at 0%
-   there is no benefit).
+4. **SRS vs investing with cash**: both paths priced at retirement — SRS
+   contributions grown at the SRS rate minus the attributable withdrawal tax
+   plus the annual tax savings reinvested at the equity rate, versus the same
+   contributions compounded at the equity rate (no relief, no capital gains
+   tax). Sliders for both growth rates; the verdict flips with them.
+5. **Net lifetime benefit & verdict**: tax saved + reinvestment growth −
+   withdrawal tax, with a Worth it / Conditional / Not worth it verdict
+   driven by the growth-aware advantage (below the 7% marginal bracket the
+   lock-in is thin; at 0% there is no benefit; a growth handicap that loses
+   to cash means Not worth it). With no SRS proposal the report still renders
+   as a what-if at the recommendation (else the cap).
 
 Household features: spouse-shareable reliefs (QCR) are auto-allocated to the
 higher-marginal-rate spouse; recommendations are per-member (SRS caps and CPF
@@ -32,10 +39,12 @@ top-up caps are individual).
 - **CPF top-ups** (never taxed again): fill the $8k self cap, then the $8k
   family cap, bounded by the taxable dollars above the 0% bracket and the
   relief-cap room.
-- **SRS**: the contribution maximizing [lifetime tax savings − attributable
-  withdrawal tax] (the tax on an existing balance is sunk and excluded).
-  Grid-searched at $100 steps; the objective is concave so this lands on the
-  optimal bracket kink.
+- **SRS**: the contribution maximizing the SRS-vs-cash advantage at
+  retirement: the growth handicap versus cash equities, plus the savings
+  stream compounded at the equity rate, minus the attributable withdrawal
+  tax (the tax on an existing balance is sunk and excluded). Grid-searched
+  at $100 steps; the objective is concave so this lands on the optimal
+  bracket kink.
 
 ## Stack
 
@@ -46,7 +55,8 @@ top-up caps are individual).
 - The engine (`lib/engine/`) is pure and framework-free:
   - `tax/`: resident brackets, relief library, household shared-relief
     water-filling optimizer;
-  - `srs/`: 10-year drawdown optimizer + projection/scenario module;
+  - `srs/`: 10-year drawdown optimizer, projection/scenario module, and the
+    SRS-vs-cash comparison;
   - `optimizer.ts`: household recommendations + the CFP cost-benefit report;
   - `rules-data.ts`: the IRAS rule tables as static, source-cited data
     (Budget announcements = new rows, not code changes).
