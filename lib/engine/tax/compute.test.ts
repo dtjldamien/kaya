@@ -37,6 +37,10 @@ test("IRAS example: Mrs Chen (YA 2026)", () => {
   assert.equal(r.taxBeforeRebate, 1_320);
   assert.equal(r.rebate, 0); // no rebate announced for YA 2026
   assert.equal(r.taxPayable, 1_320);
+  assert.equal(
+    r.bracketBreakdown.reduce((s, l) => s + l.tax, 0),
+    r.taxBeforeRebate,
+  );
 });
 
 /* IRAS donations page: statutory income $100,000, donation $10,000 to an

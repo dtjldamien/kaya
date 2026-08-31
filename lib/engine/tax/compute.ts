@@ -7,7 +7,7 @@
  */
 import type { SrsYearRules, TaxYearRules } from "../config.ts";
 import { roundCents } from "../money.ts";
-import { bracketTax, rateAt } from "./brackets.ts";
+import { bracketTax, bracketTaxBreakdown, type BracketTaxLine, rateAt } from "./brackets.ts";
 import {
   optimizeSharedReliefs,
   type SharedReliefPool,
@@ -55,6 +55,8 @@ export type MemberTaxResult = {
   /** After the $80,000 relief cap. */
   totalReliefs: number;
   chargeableIncome: number;
+  /** Per-bracket contribution to taxBeforeRebate. */
+  bracketBreakdown: BracketTaxLine[];
   taxBeforeRebate: number;
   rebate: number;
   taxPayable: number;
@@ -123,6 +125,7 @@ export function computeMemberTax(input: MemberTaxInput): MemberTaxResult {
     totalReliefsBeforeCap: roundCents(totalReliefsBeforeCap),
     totalReliefs: roundCents(totalReliefs),
     chargeableIncome: roundCents(chargeableIncome),
+    bracketBreakdown: bracketTaxBreakdown(chargeableIncome, rules.brackets),
     taxBeforeRebate,
     rebate,
     taxPayable: roundCents(Math.max(0, taxBeforeRebate - rebate)),

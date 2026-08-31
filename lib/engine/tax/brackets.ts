@@ -24,6 +24,44 @@ export function bracketTax(chargeable: number, brackets: TaxBracketRow[]): numbe
   return roundCents(tax);
 }
 
+/** One bracket's contribution to the tax on a chargeable income. */
+export type BracketTaxLine = {
+  /** Lower bound (exclusive). */
+  from: number;
+  /** Upper bound (inclusive); null = unbounded top bracket. */
+  upTo: number | null;
+  rate: number;
+  /** Portion of the chargeable income falling in this bracket. */
+  taxedAmount: number;
+  /** rate × taxedAmount. */
+  tax: number;
+};
+
+/** Per-bracket breakdown of bracketTax, for fact-checking the total. */
+export function bracketTaxBreakdown(
+  chargeable: number,
+  brackets: TaxBracketRow[],
+): BracketTaxLine[] {
+  const lines: BracketTaxLine[] = [];
+  let prevUpTo = 0;
+  for (const b of brackets) {
+    const upper = b.upTo ?? Infinity;
+    const taxed = Math.min(chargeable, upper) - prevUpTo;
+    if (taxed > 0) {
+      lines.push({
+        from: prevUpTo,
+        upTo: b.upTo,
+        rate: b.rate,
+        taxedAmount: roundCents(taxed),
+        tax: roundCents(b.rate * taxed),
+      });
+    }
+    if (chargeable <= upper) break;
+    prevUpTo = upper;
+  }
+  return lines;
+}
+
 /** Marginal rate of the top dollar of chargeable income (0 at or below 0). */
 export function rateAt(chargeable: number, brackets: TaxBracketRow[]): number {
   if (chargeable <= 0) return 0;

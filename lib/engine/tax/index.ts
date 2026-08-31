@@ -1,4 +1,5 @@
-export { bracketTax, distanceToBracketFloor, rateAt } from "./brackets.ts";
+export { bracketTax, bracketTaxBreakdown, distanceToBracketFloor, rateAt } from "./brackets.ts";
+export type { BracketTaxLine } from "./brackets.ts";
 export {
   computeHouseholdTax,
   computeMemberTax,

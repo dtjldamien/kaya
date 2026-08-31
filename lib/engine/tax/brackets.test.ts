@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   bracketTax,
+  bracketTaxBreakdown,
   distanceToBracketCeiling,
   distanceToBracketFloor,
   rateAbove,
@@ -38,6 +39,33 @@ test("bracket tax matches the IRAS gross-tax-payable column", () => {
 
 test("top bracket: 24% above $1m", () => {
   assert.equal(bracketTax(1_200_000, brackets), 199_150 + 0.24 * 200_000);
+});
+
+test("bracket breakdown itemizes each tier and sums to the total", () => {
+  // Chargeable $102,000: four full tiers plus $22,000 into the 11.5% tier.
+  const lines = bracketTaxBreakdown(102_000, brackets);
+  assert.deepEqual(
+    lines.map((l) => [l.upTo, l.rate, l.taxedAmount, l.tax]),
+    [
+      [20_000, 0, 20_000, 0],
+      [30_000, 0.02, 10_000, 200],
+      [40_000, 0.035, 10_000, 350],
+      [80_000, 0.07, 40_000, 2_800],
+      [120_000, 0.115, 22_000, 2_530],
+    ],
+  );
+  assert.equal(
+    lines.reduce((s, l) => s + l.tax, 0),
+    bracketTax(102_000, brackets),
+  );
+});
+
+test("bracket breakdown: boundary fills the tier, zero chargeable is empty", () => {
+  const atBoundary = bracketTaxBreakdown(80_000, brackets);
+  assert.equal(atBoundary.length, 4);
+  assert.equal(atBoundary[3]!.taxedAmount, 40_000);
+  assert.deepEqual(bracketTaxBreakdown(0, brackets), []);
+  assert.deepEqual(bracketTaxBreakdown(-5_000, brackets), []);
 });
 
 test("zero and negative chargeable income -> no tax", () => {

@@ -9,6 +9,9 @@
  * recommendation (else the cap), so the cost of contributing stays visible.
  */
 import type { MemberPlan } from "@/lib/engine/optimizer.ts";
+import type { BracketTaxLine } from "@/lib/engine/tax/index.ts";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import { formatDollarsWhole as fmt, formatPct } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,43 +103,57 @@ function Lever({
   );
 }
 
-/** Relief-by-relief before/after table (rows = union of both breakdowns). */
-function ReliefBreakdown({ plan }: { plan: MemberPlan }) {
-  const before = new Map(plan.baseline.reliefs.map((r) => [r.type, r.amount]));
-  const after = new Map(plan.optimized.reliefs.map((r) => [r.type, r.amount]));
-  const types = [...new Set([...before.keys(), ...after.keys()])];
-  if (types.length === 0) return null;
+/** Chevron toggle for a row's breakdown lines. */
+function Toggle({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Relief</TableHead>
-          <TableHead className={cellR}>Before</TableHead>
-          <TableHead className={cellR}>After</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {types.map((t) => {
-          const b = before.get(t) ?? 0;
-          const a = after.get(t) ?? 0;
-          return (
-            <TableRow key={t} className={a > b ? "font-medium" : ""}>
-              <TableCell>{RELIEF_LABELS[t] ?? t}</TableCell>
-              <TableCell className={cellR}>{fmt(b)}</TableCell>
-              <TableCell className={cellR}>{fmt(a)}</TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-      <TableFooter>
-        <TableRow>
-          <TableCell>Total (cap $80,000)</TableCell>
-          <TableCell className={cellR}>{fmt(plan.baseline.totalReliefs)}</TableCell>
-          <TableCell className={cellR}>{fmt(plan.optimized.totalReliefs)}</TableCell>
-        </TableRow>
-      </TableFooter>
-    </Table>
+    <button type="button" className="cursor-pointer" onClick={onToggle}>
+      <span className="mr-1 inline-block w-3 text-muted-foreground">
+        {open ? "▾" : "▸"}
+      </span>
+      {children}
+    </button>
   );
+}
+
+/** Muted indented sub-row (a breakdown line of the row above). */
+function SubRow({
+  label,
+  before,
+  after,
+}: {
+  label: string;
+  before: ReactNode;
+  after: ReactNode;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="pl-7 text-muted-foreground">{label}</TableCell>
+      <TableCell className={`${cellR} text-muted-foreground`}>{before}</TableCell>
+      <TableCell className={`${cellR} text-muted-foreground`}>{after}</TableCell>
+    </TableRow>
+  );
+}
+
+/** IRAS-table style tier label: "first $20,000 @ 0%", "next $10,000 @ 2%". */
+function tierLabel(line: BracketTaxLine, first: boolean): string {
+  const rate = formatPct(line.rate);
+  if (line.upTo === null) return `over ${fmt(line.from)} @ ${rate}`;
+  return `${first ? "first" : "next"} ${fmt(line.upTo - line.from)} @ ${rate}`;
+}
+
+/** Tier tax, with the taxed portion shown when the tier isn't full. */
+function tierTax(line: BracketTaxLine | undefined): ReactNode {
+  if (!line) return fmt(0);
+  const full = line.upTo === null || line.taxedAmount === line.upTo - line.from;
+  return full ? fmt(line.tax) : `${fmt(line.tax)} (on ${fmt(line.taxedAmount)})`;
 }
 
 export function MemberReport({
@@ -152,6 +169,24 @@ export function MemberReport({
 }) {
   const { baseline, optimized, savings, srs } = plan;
   const srsCap = form.citizenship === "foreigner" ? 35_700 : 15_300;
+  const [showReliefs, setShowReliefs] = useState(true);
+  const [showTiers, setShowTiers] = useState(true);
+
+  const beforeReliefs: Record<string, number> = {};
+  for (const r of baseline.reliefs) beforeReliefs[r.type] = r.amount;
+  const afterReliefs: Record<string, number> = {};
+  for (const r of optimized.reliefs) afterReliefs[r.type] = r.amount;
+  const reliefTypes = [...new Set([...baseline.reliefs, ...optimized.reliefs].map((r) => r.type))];
+  const reliefCapBinds =
+    baseline.totalReliefsBeforeCap > baseline.totalReliefs ||
+    optimized.totalReliefsBeforeCap > optimized.totalReliefs;
+
+  // Same bracket table both columns, so lines align by index.
+  const tiers =
+    baseline.bracketBreakdown.length >= optimized.bracketBreakdown.length
+      ? baseline.bracketBreakdown
+      : optimized.bracketBreakdown;
+  const hasRebate = baseline.rebate > 0 || optimized.rebate > 0;
 
   return (
     <Card>
@@ -213,20 +248,50 @@ export function MemberReport({
                 <TableCell className={cellR}>{fmt(optimized.assessableIncome)}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>Total reliefs (cap $80,000)</TableCell>
+                <TableCell><Toggle open={showReliefs} onToggle={() => setShowReliefs((v) => !v)}>Total reliefs (cap $80,000)</Toggle></TableCell>
                 <TableCell className={cellR}>{fmt(baseline.totalReliefs)}</TableCell>
                 <TableCell className={cellR}>{fmt(optimized.totalReliefs)}</TableCell>
               </TableRow>
+              {showReliefs && reliefTypes.map((t) => (
+                <SubRow
+                  key={t}
+                  label={RELIEF_LABELS[t] ?? t}
+                  before={fmt(beforeReliefs[t] ?? 0)}
+                  after={fmt(afterReliefs[t] ?? 0)}
+                />
+              ))}
+              {reliefCapBinds && showReliefs && (
+                <SubRow
+                  label="cap applies — reliefs before the cap"
+                  before={fmt(baseline.totalReliefsBeforeCap)}
+                  after={fmt(optimized.totalReliefsBeforeCap)}
+                />
+              )}
               <TableRow>
                 <TableCell>Chargeable income</TableCell>
                 <TableCell className={cellR}>{fmt(baseline.chargeableIncome)}</TableCell>
                 <TableCell className={cellR}>{fmt(optimized.chargeableIncome)}</TableCell>
               </TableRow>
               <TableRow className="font-semibold">
-                <TableCell>Tax payable</TableCell>
+                <TableCell><Toggle open={showTiers} onToggle={() => setShowTiers((v) => !v)}>Tax payable</Toggle></TableCell>
                 <TableCell className={cellR}>{fmt(baseline.taxPayable)}</TableCell>
                 <TableCell className={cellR}>{fmt(optimized.taxPayable)}</TableCell>
               </TableRow>
+              {showTiers && tiers.map((line, i) => (
+                <SubRow
+                  key={line.upTo ?? "top"}
+                  label={tierLabel(line, i === 0)}
+                  before={tierTax(baseline.bracketBreakdown[i])}
+                  after={tierTax(optimized.bracketBreakdown[i])}
+                />
+              ))}
+              {hasRebate && showTiers && (
+                <SubRow
+                  label={`less YA ${ya} rebate`}
+                  before={baseline.rebate > 0 ? `−${fmt(baseline.rebate)}` : "—"}
+                  after={optimized.rebate > 0 ? `−${fmt(optimized.rebate)}` : "—"}
+                />
+              )}
             </TableBody>
           </Table>
           <p className="mt-2 text-sm">
@@ -241,14 +306,6 @@ export function MemberReport({
             )}
             .
           </p>
-          <details className="mt-2">
-            <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-              Relief breakdown
-            </summary>
-            <div className="mt-2">
-              <ReliefBreakdown plan={plan} />
-            </div>
-          </details>
         </section>
 
         {plan.proposed.srsAnnual === 0 && (
