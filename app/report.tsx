@@ -328,6 +328,8 @@ export function MemberReport({
             {(form.retirementEarnedIncome > 0 || form.retirementOtherIncome > 0) &&
               ", net of the earned income relief ($8,000 at 60+) on any part-time income"}
             .
+            {srs.atRetirement.schedule.residual &&
+              " The balance compounds during the window, so the plan is recomputed each year; whatever remains at the end is deemed withdrawn and taxed at 50%."}
           </p>
           <Table>
             <TableHeader>
@@ -347,12 +349,32 @@ export function MemberReport({
                   <TableCell className={cellR}>{fmt(y.tax)}</TableCell>
                 </TableRow>
               ))}
+              {srs.atRetirement.schedule.residual && (
+                <TableRow>
+                  <TableCell>
+                    {srs.atRetirement.schedule.residual.year} — balance left (deemed
+                    withdrawn)
+                  </TableCell>
+                  <TableCell className={cellR}>
+                    {fmt(srs.atRetirement.schedule.residual.amount)}
+                  </TableCell>
+                  <TableCell className={cellR}>
+                    {fmt(srs.atRetirement.schedule.residual.taxableAmount)}
+                  </TableCell>
+                  <TableCell className={cellR}>
+                    {fmt(srs.atRetirement.schedule.residual.tax)}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
             <TableFooter>
               <TableRow>
                 <TableCell>Total</TableCell>
                 <TableCell className={cellR}>
-                  {fmt(srs.atRetirement.schedule.totalWithdrawn)}
+                  {fmt(
+                    srs.atRetirement.schedule.totalWithdrawn +
+                      (srs.atRetirement.schedule.residual?.amount ?? 0),
+                  )}
                 </TableCell>
                 <TableCell className={cellR}></TableCell>
                 <TableCell className={cellR}>{fmt(srs.atRetirement.totalTax)}</TableCell>

@@ -238,10 +238,41 @@ test("equal growth rates: full cap recommended, verdict yes", () => {
   });
   const p = r.self;
   assert.equal(p.recommended.srsAnnual, 15_300);
-  // savings 59,823 compounded to ~241k − ~62k withdrawal tax.
-  assert.ok(p.srs!.netLifetimeBenefit > 150_000);
+  // savings 59,823/yr compounded to ~241k − ~119k withdrawal tax (the
+  // balance keeps compounding at 7% through the withdrawal window, which the
+  // deemed residual prices in).
+  assert.ok(p.srs!.netLifetimeBenefit > 100_000);
+  assert.equal(p.srs!.netLifetimeBenefit, 122_670.95);
   assert.equal(p.srs!.netLifetimeBenefit, p.srs!.vsCash!.advantage);
   assert.equal(p.verdict, "yes");
+});
+test("withdrawal age selectable: 62/64 shift the window and the horizon", () => {
+  // The penalty-free age is locked at the first contribution; a member who
+  // locked 62 (pre-Jul-2022) draws two years earlier than one locked at 64.
+  const at62 = optimizeHouseholdContributions({
+    rules,
+    srsRules: srs,
+    currentYear: CURRENT_YEAR,
+    self: member({ srsWithdrawalAge: 62, plannedRetirementAge: 60 }),
+  });
+  const at64 = optimizeHouseholdContributions({
+    rules,
+    srsRules: srs,
+    currentYear: CURRENT_YEAR,
+    self: member({ srsWithdrawalAge: 64 }),
+  });
+  assert.equal(at62.self.srs!.withdrawalAge, 62);
+  assert.equal(at62.self.srs!.yearsContributing, 22); // 40 → 62
+  assert.equal(at64.self.srs!.withdrawalAge, 64);
+  assert.equal(at64.self.srs!.yearsContributing, 24); // 40 → 64
+  // The default stays the seeded statutory age (63).
+  const atDefault = optimizeHouseholdContributions({
+    rules,
+    srsRules: srs,
+    currentYear: CURRENT_YEAR,
+    self: member(),
+  });
+  assert.equal(atDefault.self.srs!.withdrawalAge, 63);
 });
 
 test("idle SRS vs equities: nothing recommended, verdict no", () => {

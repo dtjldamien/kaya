@@ -225,7 +225,9 @@ export const srsRows: SrsRuleSetRow[] = [
   year,
   capScPr: 15_300,
   capForeigner: 35_700,
-  // Statutory retirement age prevailing since 1 Jul 2022; locked in at first contribution.
+  // Statutory retirement age prevailing since 1 Jul 2022 (raised to 64 for
+  // first contributions from 1 Jul 2026); locked in at first contribution.
+  // The member's actual withdrawal age is selectable (63/64) in the UI.
   statutoryRetirementAge: 63,
   withdrawalWindowYears: 10,
   taxableShare: 0.5,

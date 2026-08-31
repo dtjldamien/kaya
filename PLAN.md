@@ -11,7 +11,8 @@ against the tax on eventual SRS withdrawals.**
 | 1 | Scope | Tax optimizer only. Budgeting, CPF projections, property, Monte Carlo, CPF LIFE all removed |
 | 2 | Household | Self + optional spouse; shared reliefs (QCR) auto-allocated to the higher-bracket spouse |
 | 3 | Levers | CPF cash top-up relief ($8k self + $8k family) and SRS ($15,300 SC/PR, $35,700 foreigner), per member per YA |
-| 4 | SRS honesty | Every SRS recommendation is net of withdrawal tax: at-retirement 10-year drawdown (50% taxable) and early withdrawal (5% penalty + 100% taxable) |
+| 4 | SRS honesty | Every SRS recommendation is net of withdrawal tax: at-retirement 10-year drawdown (50% taxable, in-window compounding + deemed residual) and early withdrawal (5% penalty + 100% taxable) |
+| 4b | Withdrawal age | Per-member 62/63/64 selector — the statutory retirement age locked in at the member's first SRS contribution (raised 1 Jul 2022 and 1 Jul 2026); default 63 |
 | 5 | Stack | Next.js + Tailwind, local-only, localStorage persistence, no chart library |
 | 6 | Rules | IRAS tables as static versioned data in `lib/engine/rules-data.ts`; Budget announcements = new rows |
 
@@ -31,7 +32,8 @@ lib/
     rules-data.ts # seeded IRAS figures (YAs 2025/2026, SRS 2025-2027)
     tax/          # brackets, relief library, per-member + household compute,
                   # shared-relief water-filling optimizer
-    srs/          # drawdown.ts (10-yr water-fill) + scenarios.ts (projection,
+    srs/          # drawdown.ts (10-yr water-fill; with growth, re-planned
+                  # annually + deemed residual) + scenarios.ts (projection,
                   # at-retirement vs early-withdrawal) + compare.ts (SRS vs cash)
     optimizer.ts  # the product: household recommendations + CFP report
 ```

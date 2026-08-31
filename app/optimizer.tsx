@@ -47,6 +47,8 @@ export type MemberForm = {
   spouseRelief: boolean;
   familyTopupEligible: boolean;
   currentSrsBalance: number;
+  /** Penalty-free withdrawal age, locked at first SRS contribution. */
+  srsWithdrawalAge: 62 | 63 | 64;
   expectedSrsReturn: number;
   /** Growth rate of the cash-investing alternative (SRS-vs-cash comparison). */
   expectedEquityReturn: number;
@@ -87,6 +89,7 @@ function defaultMember(overrides: Partial<MemberForm> = {}): MemberForm {
     spouseRelief: false,
     familyTopupEligible: false,
     currentSrsBalance: 0,
+    srsWithdrawalAge: 63,
     expectedSrsReturn: 0.07,
     expectedEquityReturn: 0.07,
     plannedRetirementAge: 63,
@@ -170,6 +173,7 @@ function toMemberInput(
     cpfEmployeeContributions: f.cpfEmployee,
     claims,
     currentSrsBalance: f.currentSrsBalance,
+    srsWithdrawalAge: f.srsWithdrawalAge,
     expectedSrsReturn: f.expectedSrsReturn,
     expectedEquityReturn: f.expectedEquityReturn,
     plannedRetirementAge: f.plannedRetirementAge,
@@ -406,6 +410,16 @@ function MemberFormCard({
           </h4>
           <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
             <Num label="Current SRS balance" value={form.currentSrsBalance} onChange={(currentSrsBalance) => set({ currentSrsBalance })} />
+            <Pick
+              label="SRS withdrawal age (locked at 1st contribution)"
+              value={String(form.srsWithdrawalAge) as "62" | "63" | "64"}
+              options={[
+                { value: "62", label: "62 (before Jul 2022)" },
+                { value: "63", label: "63 (Jul 2022 – Jun 2026)" },
+                { value: "64", label: "64 (from Jul 2026)" },
+              ]}
+              onChange={(v) => set({ srsWithdrawalAge: Number(v) as 62 | 63 | 64 })}
+            />
             <Num label="Planned retirement age" value={form.plannedRetirementAge} onChange={(plannedRetirementAge) => set({ plannedRetirementAge })} />
             {/* Retirement-income scenario fields share their own row. */}
             <div className="sm:col-start-1">

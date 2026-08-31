@@ -81,6 +81,25 @@ test("at-retirement: $500k pays $1,000 over the window", () => {
   assert.equal(s.effectiveRate, 0.002);
 });
 
+test("at-retirement with growth: residual counts toward the effective rate", () => {
+  // $660k at 7% through the window: withdrawals rise annually and the
+  // deemed residual is priced; the effective rate spreads total tax over
+  // everything that leaves the account.
+  const s = atRetirementScenario({
+    projectedBalance: 660_000,
+    srsRules: srs,
+    brackets: rules.brackets,
+    currentAge: 40,
+    plannedRetirementAge: 63,
+    currentYear: 2025,
+    windowReturn: 0.07,
+  });
+  assert.equal(s.schedule.residual!.year, 2058);
+  assert.ok(Math.abs(s.totalTax - 9_357.29) < 0.01);
+  // 9,357.29 / (828,986.88 withdrawn + 118,029.08 residual).
+  assert.equal(s.effectiveRate, 0.009881);
+});
+
 test("at-retirement: other income lifts withdrawals into brackets", () => {
   // $20k other income fills the 0% bracket; $400k SRS → $20k taxable/yr
   // stacked on it: 10k @ 2% + 10k @ 3.5% = $550/yr → $5,500.

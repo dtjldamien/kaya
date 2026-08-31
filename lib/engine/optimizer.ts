@@ -66,6 +66,11 @@ export type OptimizerMemberInput = {
   expectedEquityReturn?: number;
   /** Defaults to the statutory retirement age. */
   plannedRetirementAge?: number;
+  /** Penalty-free SRS withdrawal age: the statutory retirement age locked in
+   *  at the member's first contribution (62 before 1 Jul 2022, 63 until
+   *  30 Jun 2026, 64 from 1 Jul 2026). Defaults to the seeded statutory
+   *  retirement age. */
+  srsWithdrawalAge?: 62 | 63 | 64;
   /** Earned income per year during the drawdown window (part-time work);
    *  attracts the age-banded earned income relief automatically. */
   retirementEarnedIncome?: number;
@@ -170,7 +175,7 @@ function srsCap(ctx: MemberContext): number {
 
 function withdrawalAge(ctx: MemberContext): number {
   return Math.max(
-    ctx.srsRules.statutoryRetirementAge,
+    ctx.input.srsWithdrawalAge ?? ctx.srsRules.statutoryRetirementAge,
     ctx.input.plannedRetirementAge ?? 0,
   );
 }
@@ -269,6 +274,8 @@ function recommendSrs(
       plannedRetirementAge: ctx.input.plannedRetirementAge,
       currentYear: ctx.currentYear,
       otherAnnualIncome: retirementNetIncome(ctx),
+      windowReturn: r,
+      srsWithdrawalAge: ctx.input.srsWithdrawalAge,
     }).totalTax;
 
   // Tax on the existing balance is sunk — only the increment is attributable
@@ -346,6 +353,8 @@ function buildSrsReport(
     plannedRetirementAge: ctx.input.plannedRetirementAge,
     currentYear: ctx.currentYear,
     otherAnnualIncome: retirementNetIncome(ctx),
+    windowReturn: ctx.input.expectedSrsReturn ?? 0,
+    srsWithdrawalAge: ctx.input.srsWithdrawalAge,
   });
   const earlyAge = Math.min(
     ctx.input.earlyWithdrawalAge ?? ctx.input.age,
@@ -382,6 +391,8 @@ function buildSrsReport(
       plannedRetirementAge: ctx.input.plannedRetirementAge,
       currentYear: ctx.currentYear,
       otherAnnualIncome: retirementNetIncome(ctx),
+      windowReturn: ctx.input.expectedSrsReturn ?? 0,
+      srsWithdrawalAge: ctx.input.srsWithdrawalAge,
     }).totalTax;
     vsCash = srsVsCash({
       annualContribution: srsAnnual,

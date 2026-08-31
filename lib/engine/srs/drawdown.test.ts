@@ -55,6 +55,8 @@ test("January start: 10 calendar years; $600k fills the 2% bracket", () => {
   assert.ok(Math.abs(s.totalTax - 2_000) < 0.01);
   // Final year sits exactly at the $30k boundary -> next dollar at 3.5%.
   assert.equal(s.residualMarginalRate, 0.035);
+  // No in-window growth modelled: the window empties the account.
+  assert.equal(s.residual, null);
 });
 
 test("net of other taxable income: a working year defers to later years", () => {
@@ -90,4 +92,52 @@ test("large balance: level withdrawals at an equalized marginal rate", () => {
     assert.ok(Math.abs(y.tax - 5_650) < 0.01);
   }
   assert.ok(Math.abs(s.totalTax - 56_500) < 0.01);
+});
+
+test("growth during the window: annual re-plan plus deemed residual", () => {
+  // FIRE-Path Lion's example: $660k compounding at 7% inside the account.
+  // Each year the current balance is re-divided by (window years left + 1
+  // residual share); the remainder keeps compounding; the balance left after
+  // year 10 is deemed withdrawn (50% taxable) in the following YA.
+  const s = optimizeSrsDrawdown({
+    ...base,
+    balance: 660_000,
+    startYear: 2046,
+    startMonth: 1,
+    annualReturn: 0.07,
+  });
+  // Year 1: 660,000 / 11 = 60,000 -> taxable 30,000 -> tax $200.
+  assert.ok(Math.abs(s.years[0].withdrawal - 60_000) < 0.01);
+  assert.ok(Math.abs(s.years[0].tax - 200) < 0.01);
+  // Year 2: (660,000 - 60,000) x 1.07 = 642,000; / 10 = 64,200 -> $273.50.
+  assert.ok(Math.abs(s.years[1].withdrawal - 64_200) < 0.01);
+  assert.ok(Math.abs(s.years[1].tax - 273.5) < 0.01);
+  // The residual is deemed withdrawn the YA after the window, taxed
+  // standalone: 59,014.54 taxable = 550 + 7% x 19,014.54.
+  assert.equal(s.residual!.year, 2056);
+  assert.ok(Math.abs(s.residual!.amount - 118_029.08) < 0.01);
+  assert.ok(Math.abs(s.residual!.tax - 1_881.02) < 0.01);
+  assert.ok(Math.abs(s.totalTax - 9_357.29) < 0.01);
+  // Everything leaves the account; growth makes the total exceed $660k.
+  assert.ok(
+    Math.abs(s.totalWithdrawn + s.residual!.amount - 947_015.96) < 0.01,
+  );
+});
+
+test("growth with other income: an employed year still defers its share", () => {
+  // $50k other income in year 1 puts that bucket at the 7% bracket, so the
+  // re-plan skips it and the balance compounds for a year instead.
+  const s = optimizeSrsDrawdown({
+    ...base,
+    balance: 400_000,
+    startYear: 2046,
+    startMonth: 1,
+    annualReturn: 0.07,
+    otherTaxableIncomeByYear: { 2046: 50_000 },
+  });
+  assert.equal(s.years[0].withdrawal, 0);
+  assert.equal(s.years[0].tax, 0);
+  // Year 2: 400,000 x 1.07 = 428,000 over 9 years + 1 residual share.
+  assert.ok(Math.abs(s.years[1].withdrawal - 42_800) < 0.01);
+  assert.ok(s.residual!.amount > 0);
 });

@@ -13,9 +13,14 @@ Per member (self + optional spouse), the app computes:
 2. **At-retirement drawdown**: the SRS balance projected from the current
    balance + level annual contributions at the expected return, then withdrawn
    over the 10-year penalty-free window (50% taxable, spread to fill the
-   lowest brackets) starting at the later of the statutory retirement age (63)
-   and the planned retirement age. Reports the total withdrawal tax and the
-   effective tax rate on withdrawals.
+   lowest brackets) starting at the later of the locked penalty-free
+   withdrawal age (62/63/64, selected per member — it is fixed by the
+   statutory retirement age at the first contribution) and the planned
+   retirement age. The balance keeps compounding at the SRS return through
+   the window, so the plan is recomputed each year and the balance left at
+   the end is priced as the deemed residual withdrawal (50% taxable).
+   Reports the total withdrawal tax and the effective tax rate on
+   withdrawals.
 3. **Early withdrawal (worst case)**: 5% penalty on the full balance plus
    100% of it stacked on that year's chargeable income.
 4. **SRS vs investing with cash**: both paths priced at retirement — SRS

@@ -70,15 +70,23 @@ export function atRetirementScenario(input: {
   brackets: TaxBracketRow[];
   currentAge: number;
   plannedRetirementAge?: number;
+  /** Penalty-free withdrawal age locked at first contribution (62/63/64);
+   *  defaults to the seeded statutory retirement age. */
+  srsWithdrawalAge?: number;
   currentYear: number;
   /** Other taxable income per calendar year during the window (default 0).
    *  Net of reliefs, so it may be negative — negative values act as extra
    *  0%-bracket room, matching how IRAS offsets reliefs against income. */
   otherAnnualIncome?: number;
+  /** Expected annual return inside the SRS during the withdrawal window
+   *  (default 0 = balance frozen at the projected value). With growth the
+   *  drawdown re-plans each year and taxes the deemed residual at the
+   *  window's end. */
+  windowReturn?: number;
 }): SrsAtRetirementScenario {
   const { srsRules } = input;
   const withdrawalAge = Math.max(
-    srsRules.statutoryRetirementAge,
+    input.srsWithdrawalAge ?? srsRules.statutoryRetirementAge,
     input.plannedRetirementAge ?? 0,
   );
   const startYear = input.currentYear + Math.max(0, withdrawalAge - input.currentAge);
@@ -100,9 +108,13 @@ export function atRetirementScenario(input: {
     startMonth: 1,
     windowMonths,
     otherTaxableIncomeByYear,
+    annualReturn: input.windowReturn ?? 0,
   });
 
   const totalTax = roundCents(schedule.totalTax);
+  // Effective rate is over everything that leaves the account: the actual
+  // withdrawals plus the deemed residual.
+  const withdrawnTotal = schedule.totalWithdrawn + (schedule.residual?.amount ?? 0);
   return {
     kind: "at_retirement",
     withdrawalAge,
@@ -112,8 +124,8 @@ export function atRetirementScenario(input: {
     totalTax,
     // Rates rounded to 6dp (roundCents would zero out sub-1% rates).
     effectiveRate:
-      schedule.totalWithdrawn > 0
-        ? Math.round((totalTax / schedule.totalWithdrawn) * 1e6) / 1e6
+      withdrawnTotal > 0
+        ? Math.round((totalTax / withdrawnTotal) * 1e6) / 1e6
         : 0,
   };
 }
