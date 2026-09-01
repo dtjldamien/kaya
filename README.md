@@ -55,8 +55,7 @@ top-up caps are individual).
 
 - Next.js 16 (App Router, TypeScript) + Tailwind + shadcn/ui (Inter). No
   chart library; tables.
-- **Local-only: no login, no database.** Inputs persist in the browser's
-  localStorage (`lib/use-persisted.ts`).
+- **Local-only: no login, no database.** Nothing is stored — inputs live in memory and reset on reload.
 - The engine (`lib/engine/`) is pure and framework-free:
   - `tax/`: resident brackets, relief library, household shared-relief
     water-filling optimizer;

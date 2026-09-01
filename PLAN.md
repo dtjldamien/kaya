@@ -13,7 +13,7 @@ against the tax on eventual SRS withdrawals.**
 | 3 | Levers | CPF cash top-up relief ($8k self + $8k family) and SRS ($15,300 SC/PR, $35,700 foreigner), per member per YA |
 | 4 | SRS honesty | Every SRS recommendation is net of withdrawal tax: at-retirement 10-year drawdown (50% taxable, in-window compounding + deemed residual) and early withdrawal (5% penalty + 100% taxable) |
 | 4b | Withdrawal age | Per-member 62/63/64 selector — the statutory retirement age locked in at the member's first SRS contribution (raised 1 Jul 2022 and 1 Jul 2026); default 63 |
-| 5 | Stack | Next.js + Tailwind, local-only, localStorage persistence, no chart library |
+| 5 | Stack | Next.js + Tailwind, local-only, no browser storage (in-memory state only), no chart library |
 | 6 | Rules | IRAS tables as static versioned data in `lib/engine/rules-data.ts`; Budget announcements = new rows |
 
 ## Architecture
@@ -21,11 +21,10 @@ against the tax on eventual SRS withdrawals.**
 ```
 app/
   page.tsx        # shell
-  optimizer.tsx   # client: form state (localStorage), engine call, summary cards
+  optimizer.tsx   # client: form state (in-memory only), engine call, summary cards
   report.tsx      # client: per-member CFP cost-benefit report + override sliders
 lib/
   format.ts       # SGD display/parsing (dollars)
-  use-persisted.ts# localStorage-backed useState
   lib/engine/
     money.ts      # rounding helpers
     config.ts     # zod schemas + types for tax/SRS/relief rule tables

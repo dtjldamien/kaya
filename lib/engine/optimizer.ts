@@ -44,7 +44,6 @@ import { srsVsCash, type SrsVsCashComparison } from "./srs/compare.ts";
 /* ------------------------------ Inputs ------------------------------ */
 
 export type OptimizerMemberInput = {
-  name?: string;
   /** Age as of 31 Dec of the income year. */
   age: number;
   sex: "male" | "female";
@@ -124,7 +123,7 @@ export type MemberSrsReport = {
 };
 
 export type MemberPlan = {
-  name: string;
+  label: string;
   baseline: MemberTaxResult;
   /** With top-ups only (splits the savings attribution). */
   withTopUps: MemberTaxResult;
@@ -160,7 +159,7 @@ const SRS_GRID_STEP = 100;
 
 type MemberContext = {
   input: OptimizerMemberInput;
-  name: string;
+  label: string;
   baseline: MemberTaxResult;
   rules: TaxYearRules;
   srsRules: SrsYearRules;
@@ -514,11 +513,11 @@ export function optimizeHouseholdContributions(
 
   const ctxOf = (
     m: OptimizerMemberInput,
-    name: string,
+    label: string,
     baseline: MemberTaxResult,
   ): MemberContext => ({
     input: m,
-    name,
+    label,
     baseline,
     rules,
     srsRules,
@@ -570,10 +569,10 @@ export function optimizeHouseholdContributions(
   const baseline = householdTax(zeroAmounts);
 
   // Per-member recommendations off the baseline chargeable incomes.
-  const names = [input.self.name ?? "You", input.spouse?.name ?? "Spouse"];
+  const labels = ["You", "Spouse"];
   const ctxs = [input.self, input.spouse]
     .filter((m): m is OptimizerMemberInput => m != null)
-    .map((m, i) => ctxOf(m, names[i]!, baseline.results[i]!));
+    .map((m, i) => ctxOf(m, labels[i]!, baseline.results[i]!));
 
   const recommended = ctxs.map((ctx) => {
     const topUps = recommendTopUps(ctx);
@@ -634,7 +633,7 @@ export function optimizeHouseholdContributions(
       proposed[i]!.srsAnnual,
     );
     return {
-      name: ctx.name,
+      label: ctx.label,
       baseline: base,
       withTopUps,
       optimized,

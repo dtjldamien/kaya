@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kaya — SG Tax Optimizer",
+  title: "Kaya: SG Tax Optimizer",
   description:
     "Singapore household tax optimizer: CPF MA/SA cash top-ups and SRS contributions, with the effective tax rate under at-retirement drawdown and early-withdrawal scenarios.",
 };

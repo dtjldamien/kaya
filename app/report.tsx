@@ -171,6 +171,7 @@ export function MemberReport({
   const srsCap = form.citizenship === "foreigner" ? 35_700 : 15_300;
   const [showReliefs, setShowReliefs] = useState(true);
   const [showTiers, setShowTiers] = useState(true);
+  const [showWhatIsSrs, setShowWhatIsSrs] = useState(false);
 
   const beforeReliefs: Record<string, number> = {};
   for (const r of baseline.reliefs) beforeReliefs[r.type] = r.amount;
@@ -188,10 +189,20 @@ export function MemberReport({
       : optimized.bracketBreakdown;
   const hasRebate = baseline.rebate > 0 || optimized.rebate > 0;
 
+  // Plain-language advice, priced at the proposed amounts (defaults = the
+  // recommendation), so slider overrides reword it live.
+  const advice: string[] = [];
+  if (plan.proposed.srsAnnual > 0)
+    advice.push(`contribute ${fmt(plan.proposed.srsAnnual)} to SRS`);
+  if (plan.proposed.topUpSelf > 0)
+    advice.push(`top up ${fmt(plan.proposed.topUpSelf)} to your own SA/MA`);
+  if (plan.proposed.topUpFamily > 0)
+    advice.push(`top up ${fmt(plan.proposed.topUpFamily)} to a family member's SA/RA`);
+
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center gap-3 space-y-0">
-        <CardTitle className="text-lg">{plan.name}</CardTitle>
+        <CardTitle className="text-lg">{plan.label === "You" ? "Your plan" : "Spouse's plan"}</CardTitle>
         <Badge className={VERDICT_CLASS[plan.verdict]}>{VERDICT_LABEL[plan.verdict]}</Badge>
         <a
           className="text-sm text-muted-foreground underline decoration-dotted hover:text-foreground"
@@ -205,6 +216,18 @@ export function MemberReport({
       </CardHeader>
       <CardContent className="space-y-8">
         {/* Levers */}
+        {advice.length > 0 ? (
+          <p className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
+            <strong>Do this:</strong> {advice.join("; ")} before 31 Dec to save about{" "}
+            {fmt(savings.total)} in tax this YA.
+          </p>
+        ) : (
+          <p className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
+            <strong>Do nothing:</strong> no CPF top-up or SRS contribution is worth it at
+            your income this YA.
+          </p>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-3">
           <Lever
             label="CPF top-up: own SA/MA"
@@ -228,6 +251,28 @@ export function MemberReport({
             onChange={(n) => onPropose({ proposedSrs: n })}
           />
         </div>
+        <Toggle open={showWhatIsSrs} onToggle={() => setShowWhatIsSrs((v) => !v)}>
+          <span className="text-xs font-medium text-muted-foreground">What is SRS?</span>
+        </Toggle>
+        {showWhatIsSrs && (
+          <p className="text-xs text-muted-foreground">
+            The Supplementary Retirement Scheme is a voluntary account you open with
+            DBS/POSB, OCBC or UOB (one account only). Every dollar you put in, up to{" "}
+            {fmt(srsCap)} a year, comes off this year&apos;s taxable income. The money is
+            meant to stay invested until your penalty-free withdrawal age (
+            {srs.withdrawalAge}); withdrawals after that are only 50% taxable. Withdraw
+            earlier and you pay a 5% penalty plus tax on the full amount withdrawn.{" "}
+            <a
+              className="underline decoration-dotted hover:text-foreground"
+              target="_blank"
+              rel="noreferrer"
+              href="https://www.iras.gov.sg/taxes/individual-income-tax/basics-of-individual-income-tax/special-tax-schemes/srs-contributions"
+            >
+              IRAS: how SRS works
+            </a>
+          </p>
+        )}
+
         <p className="text-xs text-muted-foreground">
           How the SRS amount is picked: each contributed dollar saves your marginal bracket
           now, but grows your SRS balance, and withdrawals are 50% taxable over the
@@ -262,7 +307,7 @@ export function MemberReport({
               ))}
               {reliefCapBinds && showReliefs && (
                 <SubRow
-                  label="cap applies — reliefs before the cap"
+                  label="cap applies: reliefs before the cap"
                   before={fmt(baseline.totalReliefsBeforeCap)}
                   after={fmt(optimized.totalReliefsBeforeCap)}
                 />
@@ -310,7 +355,7 @@ export function MemberReport({
 
         {plan.proposed.srsAnnual === 0 && (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            No SRS contribution proposed — sections 2–5 show what contributing{" "}
+            No SRS contribution proposed. Sections 2-5 show what contributing{" "}
             {fmt(srs.annualContribution)}/yr would do.
           </p>
         )}
@@ -352,7 +397,7 @@ export function MemberReport({
               {srs.atRetirement.schedule.residual && (
                 <TableRow>
                   <TableCell>
-                    {srs.atRetirement.schedule.residual.year} — balance left (deemed
+                    {srs.atRetirement.schedule.residual.year}: balance left (deemed
                     withdrawn)
                   </TableCell>
                   <TableCell className={cellR}>
@@ -495,7 +540,7 @@ export function MemberReport({
                   <strong className="text-red-600 dark:text-red-400">
                     {fmt(-srs.vsCash.advantage)}
                   </strong>{" "}
-                  at retirement — and stays liquid throughout.
+                  at retirement, and your money stays liquid throughout.
                 </>
               )}
             </p>
@@ -556,6 +601,93 @@ export function MemberReport({
             </p>
           )}
         </section>
+
+        {/* 6. How to act on this — only when there is something to do. */}
+        {advice.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-sm font-semibold">6 · How to act on this</h3>
+            <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+              {plan.proposed.topUpSelf + plan.proposed.topUpFamily > 0 && (
+                <li>
+                  Top up CPF by 31 Dec on the CPF website (e-Cashier) or the CPF Mobile
+                  app
+                  {plan.proposed.topUpFamily > 0 &&
+                    "; for family top-ups, use the same flow with their NRIC"}
+                  .{" "}
+                  <a
+                    className="underline decoration-dotted hover:text-foreground"
+                    target="_blank"
+                    rel="noreferrer"
+                    href="https://www.cpf.gov.sg/member/growing-your-savings/saving-more-with-cpf/top-up-to-enjoy-higher-retirement-payouts"
+                  >
+                    CPF: cash top-ups
+                  </a>
+                </li>
+              )}
+              {plan.proposed.srsAnnual > 0 && (
+                <li>
+                  Contribute to SRS by 31 Dec: open an SRS account with <a
+                    className="underline decoration-dotted hover:text-foreground"
+                    target="_blank"
+                    rel="noreferrer"
+                    href="https://www.dbs.com.sg/personal/support/bank-account-srs-account-opening.html"
+                  >
+                    DBS/POSB
+                  </a>
+                  , OCBC or UOB (apply online with any of them), then contribute via
+                  internet banking. {" "}
+                  <a
+                    className="underline decoration-dotted hover:text-foreground"
+                    target="_blank"
+                    rel="noreferrer"
+                    href="https://www.iras.gov.sg/taxes/individual-income-tax/basics-of-individual-income-tax/special-tax-schemes/srs-contributions"
+                  >
+                    IRAS: SRS contributions
+                  </a>
+                </li>
+              )}
+              <li>
+                Don&apos;t leave the money idle: invest SRS balances or cash savings via{" "}
+                <a
+                  className="underline decoration-dotted hover:text-foreground"
+                  target="_blank"
+                  rel="noreferrer"
+                  href="https://www.stashaway.sg/invite/damien4532"
+                >
+                  StashAway
+                </a>
+                ,{" "}
+                <a
+                  className="underline decoration-dotted hover:text-foreground"
+                  target="_blank"
+                  rel="noreferrer"
+                  href="https://endowus.com/invite?code=OTNYV"
+                >
+                  Endowus
+                </a>
+                ,{" "}
+                <a
+                  className="underline decoration-dotted hover:text-foreground"
+                  target="_blank"
+                  rel="noreferrer"
+                  href="https://www.poems.com.sg/open-an-account/?referral=xenvE"
+                >
+                  POEMS
+                </a>{" "}
+                or{" "}
+                <a
+                  className="underline decoration-dotted hover:text-foreground"
+                  target="_blank"
+                  rel="noreferrer"
+                  href="https://www.syfe.com/invite/wealth/SRPRZKFNK"
+                >
+                  Syfe
+                </a>{" "}
+                <span className="text-xs">(my referral links; I earn a bonus if you sign up)</span>.
+              </li>
+            </ul>
+          </section>
+        )}
 
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           {plan.reasons.map((r, i) => (

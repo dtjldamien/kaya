@@ -2,9 +2,11 @@
 
 /**
  * Tax optimizer dashboard: household inputs on top, the optimizer's
- * recommendations + CFP cost-benefit report below. All state lives in
- * localStorage (usePersisted); the engine runs client-side on every change.
- */
+ * recommendations + CFP cost-benefit report below. State lives in memory
+ * only — nothing is stored in the browser; the engine runs client-side on
+ * every change.
+*/
+import { useState } from "react";
 import {
   optimizeHouseholdContributions,
   type HouseholdOptimization,
@@ -13,7 +15,6 @@ import {
 import type { ReliefClaim } from "@/lib/engine/tax/reliefs.ts";
 import { srsRows, taxRows, taxRulesForYa } from "@/lib/engine/rules-data.ts";
 import { formatDollarsWhole as fmt, formatPct, parseDollars } from "@/lib/format";
-import { usePersisted } from "@/lib/use-persisted";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,6 @@ import { MemberReport } from "./report";
 type NsmanStatus = "none" | "inactive" | "active" | "key_inactive" | "key_active";
 
 export type MemberForm = {
-  name: string;
   age: number;
   sex: "male" | "female";
   citizenship: "sc" | "pr" | "foreigner";
@@ -76,12 +76,11 @@ type FormState = {
 
 function defaultMember(overrides: Partial<MemberForm> = {}): MemberForm {
   return {
-    name: "",
     age: 35,
     sex: "male",
     citizenship: "sc",
-    earnedIncome: 120_000,
-    cpfEmployee: 17_000,
+    earnedIncome: 150_000,
+    cpfEmployee: 19_200,
     otherIncome: 0,
     donations: 0,
     nsman: "none",
@@ -107,8 +106,8 @@ const DEFAULT_STATE: FormState = {
   ya: 2026,
   children: 0,
   spouseEnabled: false,
-  self: defaultMember({ name: "You" }),
-  spouse: defaultMember({ name: "Spouse", sex: "female", earnedIncome: 60_000, cpfEmployee: 10_200 }),
+  self: defaultMember(),
+  spouse: defaultMember({ sex: "female", earnedIncome: 120_000 }),
 };
 
 function toMemberInput(
@@ -163,7 +162,6 @@ function toMemberInput(
     });
   }
   return {
-    name: f.name || undefined,
     age: f.age,
     sex: f.sex,
     citizenship: f.citizenship,
@@ -335,10 +333,6 @@ function MemberFormCard({
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Name</Label>
-            <Input className="text-base" value={form.name} onChange={(e) => set({ name: e.target.value })} />
-          </div>
           <Num label="Age (at 31 Dec)" value={form.age} onChange={(age) => set({ age })} />
           <Pick
             label="Sex"
@@ -415,7 +409,7 @@ function MemberFormCard({
               value={String(form.srsWithdrawalAge) as "62" | "63" | "64"}
               options={[
                 { value: "62", label: "62 (before Jul 2022)" },
-                { value: "63", label: "63 (Jul 2022 – Jun 2026)" },
+                { value: "63", label: "63 (Jul 2022 to Jun 2026)" },
                 { value: "64", label: "64 (from Jul 2026)" },
               ]}
               onChange={(v) => set({ srsWithdrawalAge: Number(v) as 62 | 63 | 64 })}
@@ -460,7 +454,7 @@ function QcrAllocationCard({
   childCount: number;
   onChildren: (n: number) => void;
 }) {
-  const names = [result.self.name, result.spouse?.name ?? ""] as const;
+  const names = [result.self.label, result.spouse?.label ?? ""] as const;
   const marginals = [result.self.marginalRate, result.spouse?.marginalRate ?? 0] as const;
   return (
     <Card>
@@ -509,7 +503,7 @@ function QcrAllocationCard({
 
 export function Optimizer() {
   // v3: WMCR children linked to the household children count (no input).
-  const [state, setState, hydrated] = usePersisted<FormState>("kaya-tax-optimizer-v3", DEFAULT_STATE);
+  const [state, setState] = useState<FormState>(DEFAULT_STATE);
 
   const members = [state.self, ...(state.spouseEnabled ? [state.spouse] : [])];
   const husbandIsNsman = members.some((m) => m.sex === "male" && m.nsman !== "none");
@@ -575,8 +569,6 @@ export function Optimizer() {
     }));
   const patchSpouse = (patch: Partial<MemberForm>) =>
     setState((s) => ({ ...s, spouse: { ...s.spouse, ...patch } }));
-
-  if (!hydrated) return null;
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 space-y-6">
