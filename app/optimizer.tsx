@@ -7,6 +7,7 @@
  * every change.
 */
 import { useState } from "react";
+import { Info } from "lucide-react";
 import {
   optimizeHouseholdContributions,
   type HouseholdOptimization,
@@ -20,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -52,7 +54,7 @@ export type MemberForm = {
   expectedSrsReturn: number;
   /** Growth rate of the cash-investing alternative (SRS-vs-cash comparison). */
   expectedEquityReturn: number;
-  plannedRetirementAge: number;
+  plannedRetirementAge: number | null; // blank = same as SRS withdrawal age
   /** Part-time work in retirement; attracts earned income relief ($8k at 60+). */
   retirementEarnedIncome: number;
   /** Rental etc. in retirement (no earned income relief). */
@@ -88,10 +90,10 @@ function defaultMember(overrides: Partial<MemberForm> = {}): MemberForm {
     spouseRelief: false,
     familyTopupEligible: false,
     currentSrsBalance: 0,
-    srsWithdrawalAge: 63,
+    srsWithdrawalAge: 64,
     expectedSrsReturn: 0.07,
     expectedEquityReturn: 0.07,
-    plannedRetirementAge: 63,
+    plannedRetirementAge: null,
     retirementEarnedIncome: 0,
     retirementOtherIncome: 0,
     earlyWithdrawalAge: null,
@@ -174,7 +176,7 @@ function toMemberInput(
     srsWithdrawalAge: f.srsWithdrawalAge,
     expectedSrsReturn: f.expectedSrsReturn,
     expectedEquityReturn: f.expectedEquityReturn,
-    plannedRetirementAge: f.plannedRetirementAge,
+    plannedRetirementAge: f.plannedRetirementAge ?? undefined,
     retirementEarnedIncome: f.retirementEarnedIncome || undefined,
     retirementOtherIncome: f.retirementOtherIncome || undefined,
     earlyWithdrawalAge: f.earlyWithdrawalAge ?? undefined,
@@ -190,19 +192,45 @@ function toMemberInput(
 /** Spinner-free numeric input ("textfield" style), comma-tolerant. */
 const numInputClass =
   "text-base tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+/** Hoverable ⓘ next to a field label; explains how the field feeds the math. */
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className="cursor-help text-muted-foreground/50 hover:text-muted-foreground"
+        aria-label="How this field affects the calculation"
+      >
+        <Info className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72 whitespace-normal">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Field label with an optional hint icon. */
+function FieldLabel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      {hint ? <Hint text={hint} /> : null}
+    </div>
+  );
+}
 
 function Num({
   label,
   value,
+  hint,
   onChange,
 }: {
   label: string;
   value: number;
+  hint?: string;
   onChange: (n: number) => void;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <FieldLabel label={label} hint={hint} />
       <Input
         type="text"
         inputMode="decimal"
@@ -222,16 +250,18 @@ function Pick<T extends string>({
   label,
   value,
   options,
+  hint,
   onChange,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string }[];
+  hint?: string;
   onChange: (v: T) => void;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <FieldLabel label={label} hint={hint} />
       <Select value={value} onValueChange={(v) => onChange(v as T)}>
         <SelectTrigger className="w-full">
           {/* Base-UI SelectValue renders the raw value; show the label. */}
@@ -243,6 +273,37 @@ function Pick<T extends string>({
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+}
+
+/** Optional numeric input: blank = null, falls back to a derived default. */
+function OptNum({
+  label,
+  value,
+  placeholder,
+  hint,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  placeholder: string;
+  hint?: string;
+  onChange: (n: number | null) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <FieldLabel label={label} hint={hint} />
+      <Input
+        type="text"
+        inputMode="numeric"
+        className={numInputClass}
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? null : Number(e.target.value) || null)
+        }
+      />
     </div>
   );
 }
@@ -281,17 +342,19 @@ function Check({
 export function Rate({
   label,
   value,
+  hint,
   onChange,
 }: {
   label: string;
   /** Fraction (0.07 = 7%). */
   value: number;
+  hint?: string;
   onChange: (n: number) => void;
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <FieldLabel label={label} hint={hint} />
         <span className="text-xs font-semibold tabular-nums">{formatPct(value)}</span>
       </div>
       <div className="flex h-9 items-center">
@@ -403,39 +466,25 @@ function MemberFormCard({
             SRS &amp; retirement
           </h4>
           <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
-            <Num label="Current SRS balance" value={form.currentSrsBalance} onChange={(currentSrsBalance) => set({ currentSrsBalance })} />
+            <Num label="Current SRS balance" value={form.currentSrsBalance} onChange={(currentSrsBalance) => set({ currentSrsBalance })} hint="Grows at the SRS growth rate until withdrawal, then pays out over the 10-year window. Tax on this money is unavoidable, so the optimizer only counts tax on new contributions when picking an amount." />
             <Pick
-              label="SRS withdrawal age (locked at 1st contribution)"
+              label="SRS withdrawal age"
               value={String(form.srsWithdrawalAge) as "62" | "63" | "64"}
               options={[
-                { value: "62", label: "62 (before Jul 2022)" },
-                { value: "63", label: "63 (Jul 2022 to Jun 2026)" },
-                { value: "64", label: "64 (from Jul 2026)" },
+                { value: "62", label: "62" },
+                { value: "63", label: "63" },
+                { value: "64", label: "64" },
               ]}
               onChange={(v) => set({ srsWithdrawalAge: Number(v) as 62 | 63 | 64 })}
+              hint="The age your 10-year penalty-free withdrawal window starts. Withdrawals begin in January of that year. A later age means more years of contributions and a later payout."
             />
-            <Num label="Planned retirement age" value={form.plannedRetirementAge} onChange={(plannedRetirementAge) => set({ plannedRetirementAge })} />
+            <OptNum label="Planned retirement age" value={form.plannedRetirementAge} placeholder={String(form.srsWithdrawalAge)} onChange={(plannedRetirementAge) => set({ plannedRetirementAge })} hint="Withdrawals start at the later of this and the SRS withdrawal age. Leave blank to match the SRS withdrawal age." />
             {/* Retirement-income scenario fields share their own row. */}
             <div className="sm:col-start-1">
-              <Num label="Earned income in retirement (p.a.)" value={form.retirementEarnedIncome} onChange={(retirementEarnedIncome) => set({ retirementEarnedIncome })} />
+              <Num label="Earned income in retirement (p.a.)" value={form.retirementEarnedIncome} onChange={(retirementEarnedIncome) => set({ retirementEarnedIncome })} hint="Work income during the withdrawal window. It stacks on top of your SRS withdrawals in the tax brackets, so each dollar withdrawn is taxed higher. Gets the earned-income relief ($8k from age 60)." />
             </div>
-            <Num label="Rental/other income in retirement (p.a.)" value={form.retirementOtherIncome} onChange={(retirementOtherIncome) => set({ retirementOtherIncome })} />
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Early withdrawal age (blank = now)</Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                className={numInputClass}
-                value={form.earlyWithdrawalAge ?? ""}
-                placeholder={String(form.age)}
-                onChange={(e) =>
-                  set({
-                    earlyWithdrawalAge:
-                      e.target.value === "" ? null : Number(e.target.value) || null,
-                  })
-                }
-              />
-            </div>
+            <Num label="Rental/other income in retirement (p.a.)" value={form.retirementOtherIncome} onChange={(retirementOtherIncome) => set({ retirementOtherIncome })} hint="Income other than work during the withdrawal window. It stacks on top of your SRS withdrawals in the tax brackets, so each dollar withdrawn is taxed higher. No earned-income relief." />
+            <OptNum label="Early withdrawal age (blank = now)" value={form.earlyWithdrawalAge} placeholder={String(form.age)} onChange={(earlyWithdrawalAge) => set({ earlyWithdrawalAge })} hint="What it costs to take the money out before the SRS withdrawal age: a 5% penalty plus tax on the full balance stacked on your income that year, instead of only 50% taxable spread over 10 years." />
           </div>
         </div>
       </CardContent>

@@ -477,11 +477,13 @@ export function MemberReport({
               <Rate
                 label="SRS growth rate"
                 value={form.expectedSrsReturn}
+                hint="What your invested SRS money earns, compounding until withdrawal and through the 10-year window. A higher rate means a bigger balance but also bigger taxable withdrawals. Typical returns: SSBs, T-bills and fixed deposits 2-3%; endowment plans 3-4%; equity unit trusts and ETFs 6-8%. Idle SRS cash earns about 0.05%."
                 onChange={(expectedSrsReturn) => onPropose({ expectedSrsReturn })}
               />
               <Rate
                 label="Equity growth rate"
                 value={form.expectedEquityReturn}
+                hint="What the cash path earns: the same contributions plus the reinvested tax savings, with no tax on gains (Singapore has no capital gains tax). Long-run global equity indexes like MSCI World or the S&P 500 have averaged about 7% nominal, which is why it is the default."
                 onChange={(expectedEquityReturn) =>
                   onPropose({ expectedEquityReturn })
                 }
